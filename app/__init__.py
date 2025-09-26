@@ -1,8 +1,6 @@
 import os
 from flask import Flask, jsonify, request
-from flask_jwt_extended import JWTManager
 from flask_limiter import RateLimitExceeded
-from .auth.models import TokenBlocklist
 from dotenv import load_dotenv
 from sqlalchemy import text
 
@@ -27,7 +25,6 @@ def create_app():
     else:
         app.config.from_object(DevConfig)
 
-    
     # Init extensions
     db.init_app(app)
     migrate.init_app(app, db)
@@ -36,34 +33,42 @@ def create_app():
     setup_json_logging(app)
     register_request_logging(app)
 
-    # --- CORS: autoriser Authorization header ---
+    # --- Helpers ---
+    def _csv(value, default_if_empty):
+        """Convertit une chaîne CSV en liste, sinon retourne la valeur telle quelle ou un défaut."""
+        if value is None:
+            return default_if_empty
+        if isinstance(value, str) and "," in value:
+            items = [x.strip() for x in value.split(",") if x.strip()]
+            return items if items else default_if_empty
+        return value
+
+    # --- CORS: whitelist + headers ---
+    origins = _csv(app.config.get("CORS_ORIGINS", "*"), "*")
+    allow_headers = _csv(app.config.get("CORS_ALLOW_HEADERS"), ["Authorization", "Content-Type"])
+    expose_headers = _csv(app.config.get("CORS_EXPOSE_HEADERS"), ["Content-Type"])
+
     cors.init_app(app, resources={
         r"/api/*": {
-            "origins": app.config.get("CORS_ORIGINS"),
-            "allow_headers": app.config.get("CORS_ALLOW_HEADERS"),
-            "expose_headers": app.config.get("CORS_EXPOSE_HEADERS"),
+            "origins": origins,
+            "allow_headers": allow_headers,
+            "expose_headers": expose_headers,
             "supports_credentials": False,
         }
     })
 
-    # --- Limiter: storage configurable ---
-    limiter.init_app(app)
-    limiter._storage_uri = app.config.get("RATELIMIT_STORAGE_URI")  # petit hack sûr pour pointer vers Redis en prod
-
+    # --- Limiter: storage & défaut configurable ---
+    limiter.init_app(app)   # PAS d'arguments ici ; Limiter lit RATELIMIT_* depuis app.config
 
     # Importer les modèles pour que Flask-Migrate/Alembic voie les tables
-    # (Ces imports n’exécutent rien, ils assurent juste que db.Model.metadata contient tout)
     from .users import models as users_models  # noqa: F401
     from .notes import models as notes_models  # noqa: F401
     from .auth import models as auth_models    # noqa: F401
 
-    # Enregistrer les handlers d'erreurs JSON uniformes (ValidationError, ApiError, HTTPException, Exception)
+    # Handlers d'erreurs JSON uniformes
     register_error_handlers(app)
 
-
-     # --- Callbacks JWT (revocation & erreurs standardisées) ---
-    from flask_jwt_extended import verify_jwt_in_request
-    from flask_jwt_extended import get_jwt
+    # --- Callbacks JWT (revocation & erreurs standardisées) ---
     from flask import jsonify
     from .auth.models import TokenBlocklist
 
@@ -88,13 +93,44 @@ def create_app():
     def unauthorized_callback(err_msg):
         return jsonify({"error": {"code": "authorization_required", "message": err_msg, "details": {}}}), 401
 
+    # --- Security headers (UN SEUL after_request) ---
+    @app.after_request
+    def set_security_headers(resp):
+        path = request.path or ""
 
-     # --- 429 Rate limit JSON ---
+        if path.startswith("/docs"):
+            # Docs: assets locaux + léger assouplissement
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "connect-src 'self'; "
+                "img-src 'self' data:; "
+                "style-src 'self' 'unsafe-inline'; "
+                "script-src 'self'; "
+                "font-src 'self' data:"
+            )
+            resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+        else:
+            # API JSON: CSP très restrictif (pas d'HTML attendu)
+            resp.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+            resp.headers["X-Frame-Options"] = "DENY"
+
+        # Headers communs
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+
+        # HSTS uniquement si HTTPS (prod / reverse-proxy)
+        if (env == "production" or app.config.get("ENFORCE_HTTPS")) and (
+            request.is_secure or request.headers.get("X-Forwarded-Proto", "") == "https"
+        ):
+            resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+
+        return resp
+
+    # --- 429 Rate limit JSON ---
     @app.errorhandler(RateLimitExceeded)
     def handle_rate_limit(e):
-        return jsonify({"error":{"code":"rate_limited","message":"Rate limit exceeded.","details":{}}}), 429
-    
-    
+        return jsonify({"error": {"code": "rate_limited", "message": "Rate limit exceeded.", "details": {}}}), 429
+
     # --- Blueprints ---
     from .auth.routes import bp as auth_bp
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
@@ -104,13 +140,15 @@ def create_app():
 
     from .notes.routes import bp as notes_bp
     app.register_blueprint(notes_bp, url_prefix="/api/v1/notes")
-    
+
+    from .docs.routes import bp as docs_bp
+    app.register_blueprint(docs_bp)
 
     # Appliquer un rate limit par défaut sur tout le blueprint Notes (ex: 60/min)
     from .notes.routes import bp as notes_bp_ref
     limiter.limit("60/minute")(notes_bp_ref)
 
-    # Healthcheck simple + ping DB
+    # Liveness probe (ping DB simple)
     @app.get("/healthz")
     def healthz():
         db_status = "up"
@@ -125,6 +163,38 @@ def create_app():
             "db": db_status
         })
 
+    # Readiness probe (DB + Redis si configuré)
+    @app.get("/readyz")
+    def readyz():
+        status = {"db": "down", "redis": "n/a"}
+        ok = True
+
+        # DB
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            status["db"] = "up"
+        except Exception:
+            ok = False
+            status["db"] = "down"
+
+        # Redis (uniquement si RATELIMIT_STORAGE_URI utilise redis)
+        try:
+            uri = app.config.get("RATELIMIT_STORAGE_URI", "memory://")
+            if uri.startswith(("redis://", "rediss://")):
+                import redis  # import tardif
+                r = redis.from_url(uri)
+                r.ping()
+                status["redis"] = "up"
+            else:
+                status["redis"] = "n/a"
+        except Exception:
+            ok = False
+            status["redis"] = "down"
+
+        status["status"] = "ok" if ok else "error"
+        return jsonify(status), (200 if ok else 503)
+
     # --- Route Factice de validation (pour tests Étape 5) ---
     from .auth.schemas import RegisterSchema
     _register_schema = RegisterSchema()
@@ -132,23 +202,7 @@ def create_app():
     @app.post("/api/v1/_test/validate")
     def test_validate():
         payload = request.get_json(silent=True) or {}
-        data = _register_schema.load(payload)    # -> lève ValidationError si invalide
-        return jsonify({"validated": data})      # renvoie email; password est load_only, donc pas retourné
-
-
-    # --- Security headers ---
-    @app.after_request
-    def set_security_headers(resp):
-        # API JSON: durcir un minimum
-        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-        resp.headers.setdefault("X-Frame-Options", "DENY")
-        resp.headers.setdefault("Referrer-Policy", "no-referrer")
-        # CSP très restrictif (API JSON, pas d'HTML attendu)
-        resp.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
-        # HSTS uniquement si HTTPS et activé
-        if app.config.get("ENFORCE_HTTPS") and (request.is_secure or request.headers.get("X-Forwarded-Proto","") == "https"):
-            resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
-        return resp
-
+        data = _register_schema.load(payload)
+        return jsonify({"validated": data})
 
     return app
