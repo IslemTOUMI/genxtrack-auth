@@ -1,0 +1,13 @@
+.git
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.venv/
+.env
+.env.*      # on utilisera un .env.docker dédié
+dist/
+build/
+.migrations_cache/

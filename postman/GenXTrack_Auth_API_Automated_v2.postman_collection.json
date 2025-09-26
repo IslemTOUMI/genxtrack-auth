@@ -1,0 +1,686 @@
+{
+  "info": {
+    "name": "GenXTrack Auth API — Automated (v2)",
+    "_postman_id": "d5487689-9aef-4519-a744-0b93a4a06fb7",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "v2 avec dossiers Smoke — User/Admin flow."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Switch identity by request name tag",
+          "(function switchIdentity(){",
+          "  const name = pm.request.name || \"\";",
+          "  let who = null;",
+          "  if (name.includes(\"[as admin]\")) who = \"admin\";",
+          "  else if (name.includes(\"[as user]\")) who = \"user\";",
+          "  if (who) {",
+          "    const em = pm.environment.get(`email_${who}`) || pm.environment.get(\"email\");",
+          "    const pw = pm.environment.get(`password_${who}`) || pm.environment.get(\"password\");",
+          "    if (em) pm.environment.set(\"email\", em);",
+          "    if (pw) pm.environment.set(\"password\", pw);",
+          "  }",
+          "})();",
+          "",
+          "// Inject Authorization with correct token (refresh vs access)",
+          "const url = pm.request.url.toString();",
+          "const isRefresh = url.includes('/api/v1/auth/refresh');",
+          "const token = isRefresh ? pm.environment.get('refresh_token') : pm.environment.get('access_token');",
+          "if (token) {",
+          "  pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + token });",
+          "} else {",
+          "  pm.request.headers.remove('Authorization');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/healthz",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /auth/register [as admin]",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('201 Created or 409 Conflict', () => [201,409].includes(pm.response.code));",
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.access_token) pm.environment.set('access_token', j.access_token);",
+                  "  if (j.refresh_token) pm.environment.set('refresh_token', j.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login [as admin]",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "const j = pm.response.json();",
+                  "pm.environment.set('access_token', j.access_token);",
+                  "pm.environment.set('refresh_token', j.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/register [as user]",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('201 Created or 409 Conflict', () => [201,409].includes(pm.response.code));",
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.access_token) pm.environment.set('access_token', j.access_token);",
+                  "  if (j.refresh_token) pm.environment.set('refresh_token', j.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login [as user]",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "const j = pm.response.json();",
+                  "pm.environment.set('access_token', j.access_token);",
+                  "pm.environment.set('refresh_token', j.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /auth/me",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/auth/me",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "pm.expect(pm.response.json()).to.have.property('email');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/refresh",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/refresh",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "pm.environment.set('access_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/logout",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Notes",
+      "item": [
+        {
+          "name": "POST /notes (create)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/notes/",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Note A\", \"content\": \"Contenu A\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('201 Created', () => pm.response.code === 201);",
+                  "pm.environment.set('note_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /notes (list mine)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/notes/?page=1&per_page=10",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /notes/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/notes/{{note_id}}",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /notes/:id",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/v1/notes/{{note_id}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Note A (edit)\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /notes/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/v1/notes/{{note_id}}",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.code === 204);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "GET /users (expect 403) [as user]",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/users/",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.code === 403);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /users (expect 200) [as admin]",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/users/",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Smoke — User flow",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/healthz",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/register [as user]",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('201 Created or 409 Conflict', () => [201,409].includes(pm.response.code));",
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.access_token) pm.environment.set('access_token', j.access_token);",
+                  "  if (j.refresh_token) pm.environment.set('refresh_token', j.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login [as user]",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "const j = pm.response.json();",
+                  "pm.environment.set('access_token', j.access_token);",
+                  "pm.environment.set('refresh_token', j.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /auth/me",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/auth/me",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "pm.expect(pm.response.json()).to.have.property('email');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /notes (create)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/notes/",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Note A\", \"content\": \"Contenu A\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('201 Created', () => pm.response.code === 201);",
+                  "pm.environment.set('note_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /notes/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/notes/{{note_id}}",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /users (expect 403) [as user]",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/users/",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.code === 403);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Smoke — Admin flow",
+      "item": [
+        {
+          "name": "POST /auth/login [as admin]",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "const j = pm.response.json();",
+                  "pm.environment.set('access_token', j.access_token);",
+                  "pm.environment.set('refresh_token', j.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /auth/me",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/auth/me",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "pm.expect(pm.response.json()).to.have.property('email');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /users (expect 200) [as admin]",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/users/",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

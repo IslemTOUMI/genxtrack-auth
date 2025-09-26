@@ -1,0 +1,52 @@
+
+services:
+  db:
+    image: postgres:15
+    container_name: pgjwt_compose
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_password_strong
+      POSTGRES_DB: app_db
+    ports:
+      - "5434:5432"    # attention: expose 5434 sur l'hôte pour éviter conflit avec ton 5433/5432 existants
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: redis_rate
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flask_jwt_api
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      APP_ENV: production
+      FLASK_ENV: production
+      # secrets à personnaliser:
+      SECRET_KEY: dev-secret-change-me
+      JWT_SECRET_KEY: dev-jwt-secret-change-me
+      # URLs service -> service (ne pas mettre localhost)
+      DATABASE_URL: postgresql+psycopg://app_user:app_password_strong@db:5432/app_db
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+      CORS_ORIGINS: "*"
+      JWT_ACCESS_MINUTES: "15"
+      JWT_REFRESH_DAYS: "7"
+      ENFORCE_HTTPS: "false"
+    ports:
+      - "8000:8000"
+
+
+volumes:
+  dbdata:
