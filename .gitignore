@@ -1,5 +1,29 @@
-.venv/
-.env*
+# Python / Flask
 __pycache__/
 *.pyc
-.cache/
+*.pyo
+*.pyd
+*.log
+*.sqlite
+*.sqlite3
+instance/
+.env
+.venv/
+dist/
+build/
+.DS_Store
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# Coverage / tests
+htmlcov/
+.tox/
+.pytest_cache/
+.coverage
+coverage.xml
+
+# OS
+Thumbs.db
+

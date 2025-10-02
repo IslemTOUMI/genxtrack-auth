@@ -49,5 +49,10 @@ ENV APP_ENV=production \
 HEALTHCHECK --interval=15s --timeout=3s --retries=10 \
   CMD curl -fsS http://localhost:8000/healthz || exit 1
 
+# --- Swagger UI assets (served locally, no CDN needed) ---
+RUN mkdir -p /app/static/swagger && \
+    curl -L https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui.css -o /app/static/swagger/swagger-ui.css && \
+    curl -L https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui-bundle.js -o /app/static/swagger/swagger-ui-bundle.js
+
 ENTRYPOINT ["./entrypoint.sh"]
 # gunicorn est lancé dans l'entrypoint après migrations
